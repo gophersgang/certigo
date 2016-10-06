@@ -18,6 +18,7 @@ package main
 
 import (
 	"crypto/x509"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"os"
@@ -25,6 +26,7 @@ import (
 	"time"
 
 	"github.com/fatih/color"
+	"github.com/square/certigo/lib"
 )
 
 var layout = `{{if .Alias}}{{.Alias}}
@@ -68,7 +70,12 @@ type certWithName struct {
 	cert *x509.Certificate
 }
 
-func createSimpleCertificateFromX509(block *pem.Block) simpleCertificate {
+func (c certWithName) MarshalJSON() ([]byte, error) {
+	out := lib.CreateSimpleCertificate(c.name, c.cert)
+	return json.Marshal(out)
+}
+
+func createSimpleCertificateFromX509(block *pem.Block) lib.SimpleCertificate {
 	raw, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error reading cert: %s", err)
@@ -76,21 +83,21 @@ func createSimpleCertificateFromX509(block *pem.Block) simpleCertificate {
 	}
 
 	cert := certWithName{cert: raw}
-	if val, ok := block.Headers[nameHeader]; ok {
+	if val, ok := block.Headers[lib.NameHeader]; ok {
 		cert.name = val
 	}
-	if val, ok := block.Headers[fileHeader]; ok {
+	if val, ok := block.Headers[lib.FileHeader]; ok {
 		cert.file = val
 	}
 
-	return createSimpleCertificate(cert)
+	return lib.CreateSimpleCertificate("", cert)
 }
 
 // displayCert takes in a parsed certificate object
 // (for jceks certs, blank otherwise), and prints out relevant
 // information. Start and end dates are colored based on whether or not
 // the certificate is expired, not expired, or close to expiring.
-func displayCert(cert simpleCertificate) {
+func displayCert(cert lib.SimpleCertificate) {
 	funcMap := template.FuncMap{
 		"certStart":          certStart,
 		"certEnd":            certEnd,
@@ -136,7 +143,7 @@ var algorithmColors = map[x509.SignatureAlgorithm]*color.Color{
 
 // highlightAlgorithm changes the color of the signing algorithm
 // based on a set color map, e.g. to make SHA-1 show up red.
-func highlightAlgorithm(sigAlg simpleSigAlg) string {
+func highlightAlgorithm(sigAlg lib.SimpleSigAlg) string {
 	sig := x509.SignatureAlgorithm(sigAlg)
 	color, ok := algorithmColors[sig]
 	if !ok {
@@ -183,14 +190,6 @@ func certEnd(end time.Time) string {
 	} else {
 		return red.SprintfFunc()(end.String())
 	}
-}
-
-var badSignatureAlgorithms = []x509.SignatureAlgorithm{
-	x509.MD2WithRSA,
-	x509.MD5WithRSA,
-	x509.SHA1WithRSA,
-	x509.DSAWithSHA1,
-	x509.ECDSAWithSHA1,
 }
 
 func redify(text string) string {

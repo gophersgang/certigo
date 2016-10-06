@@ -21,17 +21,24 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+
+	"github.com/square/certigo/lib"
 )
 
 type simpleVerifyCert struct {
-	Name               string       `json:"name"`
-	IsSelfSigned       bool         `json:"is_self_signed"`
-	SignatureAlgorithm simpleSigAlg `json:"signature_algorithm"`
+	Name               string           `json:"name"`
+	IsSelfSigned       bool             `json:"is_self_signed"`
+	SignatureAlgorithm lib.SimpleSigAlg `json:"signature_algorithm"`
 }
 
 type simpleVerification struct {
 	Error  string               `json:"error,omitempty"`
 	Chains [][]simpleVerifyCert `json:"chains"`
+}
+
+type simpleResult struct {
+	Certificates []lib.SimpleCertificate `json:"certificates"`
+	VerifyResult *simpleVerification     `json:"verify_result,omitempty"`
 }
 
 func caBundle(caPath string) *x509.CertPool {
@@ -83,7 +90,7 @@ func verifyChain(certs []*x509.Certificate, dnsName, caPath string) simpleVerifi
 				aCert.Name = fmt.Sprintf("Serial #%s", cert.SerialNumber.String())
 			}
 			aCert.IsSelfSigned = isSelfSigned(cert)
-			aCert.SignatureAlgorithm = simpleSigAlg(cert.SignatureAlgorithm)
+			aCert.SignatureAlgorithm = lib.SimpleSigAlg(cert.SignatureAlgorithm)
 			aChain = append(aChain, aCert)
 		}
 		result.Chains = append(result.Chains, aChain)
@@ -96,7 +103,7 @@ func fmtCert(cert simpleVerifyCert) string {
 	if cert.IsSelfSigned {
 		name += green.SprintfFunc()(" [self-signed]")
 	}
-	for _, alg := range badSignatureAlgorithms {
+	for _, alg := range lib.BadSignatureAlgorithms {
 		if x509.SignatureAlgorithm(cert.SignatureAlgorithm) == alg {
 			name += red.SprintfFunc()(" [%s]", algString(alg))
 			break
@@ -120,8 +127,4 @@ func printVerifyResult(result simpleVerification) {
 			fmt.Printf("\t=> %s\n", fmtCert(cert))
 		}
 	}
-}
-
-func isSelfSigned(cert *x509.Certificate) bool {
-	return cert.CheckSignatureFrom(cert) == nil
 }
